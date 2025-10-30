@@ -1,0 +1,61 @@
+'''
+Base non è una semplice classe, ma utilizza un metaclass che intercetta la creazione di tutte le sue sottoclassi.
+'''
+
+# tables creation
+# class ISA95_level(Base):
+#     __tablename__ = "isa95_level"
+#     id = Column(Integer, primary_key=True)
+#     name = Column(String(100), nullable=False)
+
+# class Intent(Base):
+#     __tablename__ = "intent"
+#     id = Column(Integer, primary_key=True)
+#     name = Column(String(100), nullable=False)
+#     description = Column(String(100), nullable=False)
+#     created_at = Column(TIMESTAMP)
+
+# class Entity(Base):
+#     __tablename__ = "entity"
+#     id = Column(Integer, primary_key=True)
+#     name = Column(String(100), nullable=False)
+#     description = Column(String(100), nullable=False)
+#     created_at = Column(TIMESTAMP)
+
+# class Intent_isa95_link(Base):
+#     __tablename__ = "intent_isa95_link"
+#     intent_id = Column(Integer, ForeignKey("intent.id"))
+#     isa_95_id = Column(Integer, ForeignKey("isa95_level.id"))
+#     # la coppia intent_id, isa_95_id deve essere primary key  
+#     # FOREIGN KEY (intent_id) REFERENCES intent(id) ON DELETE CASCADE,
+#     # FOREIGN KEY (isa95_id) REFERENCES isa95_level(id) ON DELETE CASCADE
+
+# class Entity_isa95_link(Base):
+#     __tablename__ = "entity_isa95_link"
+#     intent_id = Column(Integer, ForeignKey("entity.id"))
+#     isa_95_id = Column(Integer, ForeignKey("isa95_level.id"))
+#     # la coppia intent_id, isa_95_id deve essere primary key
+#     # FOREIGN KEY (entity_id) REFERENCES entity(id) ON DELETE CASCADE,
+#     # FOREIGN KEY (isa95_id) REFERENCES isa95_level(id) ON DELETE CASCADE
+
+'''
+CREATE TABLE intent_match (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    intent_a_id INT NOT NULL,
+    intent_b_id INT NOT NULL,
+    relation_type ENUM('equivalent', 'broader', 'narrower', 'deprecated') DEFAULT 'equivalent',
+    confidence FLOAT DEFAULT 1.0,
+    FOREIGN KEY (intent_a_id) REFERENCES intent(id) ON DELETE CASCADE,
+    FOREIGN KEY (intent_b_id) REFERENCES intent(id) ON DELETE CASCADE
+);
+
+CREATE TABLE entity_match (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_a_id INT NOT NULL,
+    entity_b_id INT NOT NULL,
+    relation_type ENUM('equivalent', 'broader', 'narrower', 'deprecated') DEFAULT 'equivalent',
+    confidence FLOAT DEFAULT 1.0,
+    FOREIGN KEY (entity_a_id) REFERENCES entity(id) ON DELETE CASCADE,
+    FOREIGN KEY (entity_b_id) REFERENCES entity(id) ON DELETE CASCADE
+);
+'''

@@ -1,0 +1,18 @@
+[project]
+name = "sqlalchemy-study"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "cavaleriReply",email = "f.cavaleri@reply.it"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy (>=2.0.44,<3.0.0)",
+    "pymysql (>=1.1.2,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
