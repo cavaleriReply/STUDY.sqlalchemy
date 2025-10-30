@@ -418,14 +418,130 @@ class Controller():
 
     # modificare livello isa
 
-    def remove_intents(self):
+    def remove_intents(self, 
+                    intent_ids: list[int] = None,
+                    intent_names: list[str] = None):
+        """
+        Rimuove uno o più intenti dal database.
+        Grazie al CASCADE, elimina automaticamente anche:
+        - Link con livelli ISA95
+        - Relazioni di matching con altri intenti
+        
+        Args:
+            intent_ids: Lista di ID degli intenti da rimuovere (opzionale)
+            intent_names: Lista di nomi degli intenti da rimuovere (opzionale)
+        
+        Returns:
+            int: Numero di intenti rimossi
+        
+        Examples:
+            # Rimuovi per ID
+            remove_intents(intent_ids=[180, 181, 182])
+            
+            # Rimuovi per nome
+            remove_intents(intent_names=["start_machine", "stop_machine"])
+            
+            # Rimuovi singolo intent
+            remove_intents(intent_ids=[180])
+        """
+        
+        # Validazione: almeno un parametro deve essere fornito
+        if intent_ids is None and intent_names is None:
+            raise ValueError("Devi fornire 'intent_ids' o 'intent_names'")
+        
+        # Se entrambi sono forniti, usa solo gli ID
+        if intent_ids is not None and intent_names is not None:
+            print("Entrambi intent_ids e intent_names forniti, uso solo intent_ids")
+            intent_names = None
+        
+        query = self.session.query(Intent)
+        
+        # Filtra per ID
+        if intent_ids is not None:
+            if not isinstance(intent_ids, list):
+                intent_ids = [intent_ids]
+            query = query.filter(Intent.id.in_(intent_ids))
+        
+        # Filtra per nome
+        elif intent_names is not None:
+            if not isinstance(intent_names, list):
+                intent_names = [intent_names]
+            query = query.filter(Intent.name.in_(intent_names))
+        
+        # Trova gli intenti
+        intents = query.all()
+        count = len(intents)
+        
+        if count == 0:
+            print("Nessun intent trovato con i criteri specificati")
+            return 0
+        
+        # Elimina tutti gli intenti trovati (CASCADE elimina link e match)
+        for intent in intents:
+            self.session.delete(intent)
+        
+        self.session.commit()
+        
+        print(f"{count} intent/i eliminato/i")
+        return count
 
-
-        pass
-
-    def remove_entities(self):
-
-        pass
+    def remove_entities(self,
+                        entity_ids: list[int]=None,
+                        entity_names: list[str]=None):
+        """
+        Rimuove uno o più entità dal database.
+        Grazie al CASCADE, elimina automaticamente anche:
+        - Link con livelli ISA95
+        - Relazioni di matching con altre entità
+        
+        Args:
+            entity_ids: Lista di ID delle entità da rimuovere (opzionale)
+            entity_names: Lista di nomi delle entità da rimuovere (opzionale)
+        
+        Returns:
+            int: Numero di entità rimosse
+        
+        """        
+        # Validazione: almeno un parametro deve essere fornito
+        if entity_ids is None and entity_names is None:
+            raise ValueError("Devi fornire 'intent_ids' o 'intent_names'")
+        
+        # Se entrambi sono forniti, usa solo gli ID
+        if entity_ids is not None and entity_names is not None:
+            print("Entrambi intent_ids e intent_names forniti, uso solo intent_ids")
+            entity_names = None
+        
+        query = self.session.query(Entity)
+        # qua
+        
+        # Filtra per ID
+        if entity_ids is not None:
+            if not isinstance(entity_ids, list):
+                entity_ids = [entity_ids]
+            query = query.filter(Entity.id.in_(entity_ids))
+        
+        # Filtra per nome
+        elif entity_names is not None:
+            if not isinstance(entity_names, list):
+                entity_names = [entity_names]
+            query = query.filter(Entity.name.in_(entity_names))
+        
+        # Trova gli intenti
+        entities = query.all()
+        count = len(entities)
+        
+        if count == 0:
+            print("Nessun intent trovato con i criteri specificati")
+            return 0
+        
+        # Elimina tutti gli intenti trovati (CASCADE elimina link e match)
+        for entity in entities:
+            self.session.delete(entity)
+        
+        self.session.commit()
+        
+        print(f"{count} entities eliminati")
+        return count
 
     def get_intents_by_isa95_level(self):
 
@@ -453,8 +569,12 @@ controller = Controller(engine)
 # controller.remove_intents_relation(match_id=8)
 # controller.remove_intents_relation(182, 183)
 #
-#  controller.define_entities_relation(75, 76, RelationType.DEPRECATED)
-# controller.define_entities_relation(76, 77, RelationType.DEPRECATED)
+# controller.define_entities_relation(75, 90, RelationType.DEPRECATED)
+# controller.define_entities_relation(90, 77, RelationType.DEPRECATED)
 # controller.define_entities_relation(78, 79, RelationType.DEPRECATED)
 # controller.define_entities_relation(80, 82, RelationType.DEPRECATED)
-controller.remove_entities_relation(match_id=4)
+# controller.remove_entities_relation(match_id=4)
+# controller.define_intents_relation(181, 182, RelationType.EQUIVALENT)
+# controller.remove_intents(intent_ids=[181, 182])
+# controller.remove_entities(entity_ids=[75, 78])
+# controller.remove_entities(entity_names=['logical_entity', 'failure_mode'])
