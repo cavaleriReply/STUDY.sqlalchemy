@@ -512,8 +512,7 @@ class Controller():
             entity_names = None
         
         query = self.session.query(Entity)
-        # qua
-        
+    
         # Filtra per ID
         if entity_ids is not None:
             if not isinstance(entity_ids, list):
@@ -543,13 +542,75 @@ class Controller():
         print(f"{count} entities eliminati")
         return count
 
-    def get_intents_by_isa95_level(self):
+    def get_intents_by_isa95_level(self, level: ISA95LevelEnum):
+        """
+        Recupera tutti gli intenti associati a un livello ISA95 specifico.
+        
+        Args:
+            level_name: Nome del livello ISA95 (es. "MES", "SCADA", "PLC", "ERP"), classe ISA95Level
+        
+        Returns:
+            list[Intent]: Lista di intenti associati al livello
+        
+        Raises:
+            ValueError: Se il livello ISA95 non esiste
+        
+        Example:
+            intents = get_intents_by_isa95_level(ISA95Level.MES)
+            for intent in intents:
+                print(f"{intent.name}: {intent.description}")
+        """
+        # Trova il livello ISA95
+        level = self.session.query(ISA95Level).filter_by(name=level.value).first()
+        
+        if not level:
+            raise ValueError(f"Livello ISA95 '{level.name}' non trovato. "
+                            f"Livelli disponibili: DEFAULT, PLC, SCADA, MES, ERP")
+        
+        # Query per trovare gli intenti associati
+        intents = self.session.query(Intent)\
+            .join(IntentISA95Link)\
+            .filter(IntentISA95Link.isa95_id == level.id)\
+            .all()
+        
+        print(f"Trovati {len(intents)} intent/i per livello '{level.name}'")
+        
+        return intents
 
-        pass
-
-    def get_entities_by_isa95_level(self):
-
-        pass
+    def get_entities_by_isa95_level(self, level: ISA95LevelEnum):
+        """
+        Recupera tutte le entità associati a un livello ISA95 specifico.
+        
+        Args:
+            level_name: Nome del livello ISA95 (es. "MES", "SCADA", "PLC", "ERP"), classe ISA95Level
+        
+        Returns:
+            list[Intent]: Lista di entità associate al livello
+        
+        Raises:
+            ValueError: Se il livello ISA95 non esiste
+        
+        Example:
+            entities = get_entities_by_isa95_level(ISA95Level.MES)
+            for entity in entities:
+                print(f"{entity.name}: {entity.description}")
+        """
+        # Trova il livello ISA95
+        level = self.session.query(ISA95Level).filter_by(name=level.value).first()
+        
+        if not level:
+            raise ValueError(f"Livello ISA95 '{level.name}' non trovato. "
+                            f"Livelli disponibili: DEFAULT, PLC, SCADA, MES, ERP")
+        
+        # Query per trovare gli intenti associati
+        entities = self.session.query(Entity)\
+            .join(EntityISA95Link)\
+            .filter(EntityISA95Link.isa95_id == level.id)\
+            .all()
+        
+        print(f"Trovati {len(entities)} intent/i per livello '{level.name}'")
+        
+        return entities
 
 import url
 
@@ -578,3 +639,9 @@ controller = Controller(engine)
 # controller.remove_intents(intent_ids=[181, 182])
 # controller.remove_entities(entity_ids=[75, 78])
 # controller.remove_entities(entity_names=['logical_entity', 'failure_mode'])
+
+
+# out = controller.get_intents_by_isa95_level(ISA95LevelEnum.LEVEL_2)
+# print([elem.id for elem in out])
+# out = controller.get_entities_by_isa95_level(ISA95LevelEnum.LEVEL_2)
+# print([elem.id for elem in out])
