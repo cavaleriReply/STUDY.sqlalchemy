@@ -402,22 +402,462 @@ class Controller():
         print(f"{count} relazione/i rimossa/e")
         return count
 
-        
+    # modificare descrizione
 
-    def query_intent_info(self):
+    def modify_intent_description(self):
         """Mostra tutte le informazioni su un intent"""
 
         pass
 
-    def query_entity_info(self):
+    def modify_entity_description(self):
         """Mostra tutte le informazioni su una entità"""
     
         pass
 
-    # modificare descrizione
-
     # modificare livello isa
+    def replace_intent_isa_levels(self, 
+                                intent_id: int = None,
+                                intent_name: str = None,
+                                levels: ISA95LevelEnum = None):
+        """
+        Sostituisce completamente i livelli ISA95 di un intent.
+        
+        Args:
+            intent_id: ID dell'intent (opzionale)
+            intent_name: Nome dell'intent (opzionale)
+            levels: Lista di nuovi livelli ISA95
+        
+        Returns:
+            Intent: L'intent modificato
+        
+        Raises:
+            ValueError: Se intent non trovato o parametri invalidi
+        
+        Example:
+            replace_intent_isa_levels(intent_id=180, levels=["MES", "ERP"])
+        """
+        # Validazione
+        if intent_id is None and intent_name is None:
+            raise ValueError("Devi fornire 'intent_id' o 'intent_name'")
+        
+        if not levels:
+            raise ValueError("Devi fornire almeno un livello")
+        
+        # Normalizza a lista
+        if not isinstance(levels, list):
+            levels = [levels]
+        
+        # Trova l'intent
+        if intent_id is not None:
+            intent = self.session.query(Intent).filter_by(id=intent_id).first()
+        else:
+            intent = self.session.query(Intent).filter_by(name=intent_name).first()
+        
+        if not intent:
+            identifier = intent_id if intent_id else intent_name
+            raise ValueError(f"Intent '{identifier}' non trovato nel database")
+        
+        # Rimuovi tutti i link esistenti
+        self.session.query(IntentISA95Link)\
+            .filter(IntentISA95Link.intent_id == intent.id)\
+            .delete()
+        
+        # Aggiungi i nuovi livelli
+        for level_obj in levels:
+            level = self.session.query(ISA95Level).filter_by(name=level_obj.value).first()
+            if not level:
+                self.session.rollback()
+                raise ValueError(f"Livello ISA95 '{level_obj.value}' non trovato")
+            
+            link = IntentISA95Link(intent_id=intent.id, isa95_id=level.id)
+            self.session.add(link)
+        
+        self.session.commit()
+        
+        print(f"Livelli sostituiti per intent '{intent.name}': {', '.join(level.value for level in levels)}")
+        return intent
 
+    def add_intent_isa_levels(self, 
+                            intent_id: int = None,
+                            intent_name: str = None,
+                            # levels: list[str] = None):
+                            levels: ISA95LevelEnum = None):
+        """
+        Aggiunge livelli ISA95 a un intent (mantiene i livelli esistenti).
+        
+        Args:
+            intent_id: ID dell'intent (opzionale)
+            intent_name: Nome dell'intent (opzionale)
+            levels: Lista di livelli da aggiungere
+        
+        Returns:
+            Intent: L'intent modificato
+        
+        Raises:
+            ValueError: Se intent non trovato o parametri invalidi
+        
+        Example:
+            add_intent_isa_levels(intent_name="start_machine", levels=["SCADA", "MES"])
+        """
+        # Validazione
+        if intent_id is None and intent_name is None:
+            raise ValueError("Devi fornire 'intent_id' o 'intent_name'")
+        
+        if not levels:
+            raise ValueError("Devi fornire almeno un livello")
+        
+        # Normalizza a lista
+        if not isinstance(levels, list):
+            levels = [levels]
+        
+        # Trova l'intent
+        if intent_id is not None:
+            intent = self.session.query(Intent).filter_by(id=intent_id).first()
+        else:
+            intent = self.session.query(Intent).filter_by(name=intent_name).first()
+        
+        if not intent:
+            identifier = intent_id if intent_id else intent_name
+            raise ValueError(f"Intent '{identifier}' non trovato nel database")
+        
+        # Aggiungi livelli
+        added_count = 0
+        skipped = []
+        
+        for level_obj in levels:
+            level = self.session.query(ISA95Level).filter_by(name=level_obj.value).first()
+            if not level:
+                self.session.rollback()
+                raise ValueError(f"Livello ISA95 '{level_obj.value}' non trovato")
+            
+            # Controlla se il link già esiste
+            existing = self.session.query(IntentISA95Link).filter_by(
+                intent_id=intent.id,
+                isa95_id=level.id
+            ).first()
+            
+            if not existing:
+                link = IntentISA95Link(intent_id=intent.id, isa95_id=level.id)
+                self.session.add(link)
+                added_count += 1
+            else:
+                skipped.append(level_obj.value)
+        
+        self.session.commit()
+        
+        # Messaggi
+        if added_count > 0:
+            print(f"{added_count} livello/i aggiunto/i per intent '{intent.name}'")
+        if skipped:
+            print(f"Livelli già associati (skip): {', '.join(skipped)}")
+        
+        # Mostra livelli correnti
+        current_levels = [link.isa95_level.name for link in intent.isa95_links]
+        print(f"Livelli correnti: {', '.join(current_levels)}")
+        
+        return intent
+
+    def remove_intent_isa_levels(self, 
+                                intent_id: int = None,
+                                intent_name: str = None,
+                                levels: ISA95LevelEnum = None):
+        """
+        Rimuove livelli ISA95 da un intent.
+        
+        Args:
+            intent_id: ID dell'intent (opzionale)
+            intent_name: Nome dell'intent (opzionale)
+            levels: Lista di livelli da rimuovere
+        
+        Returns:
+            Intent: L'intent modificato
+        
+        Raises:
+            ValueError: Se intent non trovato o parametri invalidi
+        
+        Example:
+            remove_intent_isa_levels(intent_id=180, levels=["PLC", "DEFAULT"])
+        """
+        # Validazione
+        if intent_id is None and intent_name is None:
+            raise ValueError("Devi fornire 'intent_id' o 'intent_name'")
+        
+        if not levels:
+            raise ValueError("Devi fornire almeno un livello")
+        
+        # Normalizza a lista
+        if not isinstance(levels, list):
+            levels = [levels]
+        
+        # Trova l'intent
+        if intent_id is not None:
+            intent = self.session.query(Intent).filter_by(id=intent_id).first()
+        else:
+            intent = self.session.query(Intent).filter_by(name=intent_name).first()
+        
+        if not intent:
+            identifier = intent_id if intent_id else intent_name
+            raise ValueError(f"Intent '{identifier}' non trovato nel database")
+        
+        # Rimuovi livelli
+        removed_count = 0
+        not_found = []
+        
+        for level_obj in levels:
+            level = self.session.query(ISA95Level).filter_by(name=level_obj.value).first()
+            if not level:
+                not_found.append(level_obj.value)
+                continue
+            
+            # Rimuovi il link
+            deleted = self.session.query(IntentISA95Link).filter_by(
+                intent_id=intent.id,
+                isa95_id=level.id
+            ).delete()
+            
+            removed_count += deleted
+        
+        self.session.commit()
+        
+        # Messaggi
+        if removed_count > 0:
+            print(f"{removed_count} livello/i rimosso/i per intent '{intent.name}'")
+        else:
+            print(f"Nessun livello rimosso (non erano associati)")
+        
+        if not_found:
+            print(f"Livelli non trovati nel DB: {', '.join(not_found)}")
+        
+        # Mostra livelli correnti
+        current_levels = [link.isa95_level.name for link in intent.isa95_links]
+        if current_levels:
+            print(f"Livelli correnti: {', '.join(current_levels)}")
+        else:
+            print(f"Intent '{intent.name}' non ha più livelli ISA95 associati")
+        
+        return intent
+
+    def replace_entity_isa_levels(self, 
+                             entity_id: int = None,
+                             entity_name: str = None,
+                             levels: ISA95LevelEnum = None):
+        """
+        Sostituisce completamente i livelli ISA95 di un'entità.
+        
+        Args:
+            entity_id: ID dell'entity (opzionale)
+            entity_name: Nome dell'entity (opzionale)
+            levels: Lista di nuovi livelli ISA95
+        
+        Returns:
+            Entity: L'entity modificata
+        
+        Raises:
+            ValueError: Se entity non trovata o parametri invalidi
+        
+        Example:
+            replace_entity_isa_levels(entity_id=42, levels=[ISA95LevelEnum.LEVEL_3, ISA95LevelEnum.LEVEL_4])
+        """
+        # Validazione
+        if entity_id is None and entity_name is None:
+            raise ValueError("Devi fornire 'entity_id' o 'entity_name'")
+        
+        if not levels:
+            raise ValueError("Devi fornire almeno un livello")
+        
+        # Normalizza a lista
+        if not isinstance(levels, list):
+            levels = [levels]
+        
+        # Trova l'entity
+        if entity_id is not None:
+            entity = self.session.query(Entity).filter_by(id=entity_id).first()
+        else:
+            entity = self.session.query(Entity).filter_by(name=entity_name).first()
+        
+        if not entity:
+            identifier = entity_id if entity_id else entity_name
+            raise ValueError(f"Entity '{identifier}' non trovata nel database")
+        
+        # Rimuovi tutti i link esistenti
+        self.session.query(EntityISA95Link)\
+            .filter(EntityISA95Link.entity_id == entity.id)\
+            .delete()
+        
+        # Aggiungi i nuovi livelli
+        for level_obj in levels:
+            level = self.session.query(ISA95Level).filter_by(name=level_obj.value).first()
+            if not level:
+                self.session.rollback()
+                raise ValueError(f"Livello ISA95 '{level_obj.value}' non trovato")
+            
+            link = EntityISA95Link(entity_id=entity.id, isa95_id=level.id)
+            self.session.add(link)
+        
+        self.session.commit()
+        
+        print(f"Livelli sostituiti per entity '{entity.name}': {', '.join(level.value for level in levels)}")
+        return entity
+
+    def add_entity_isa_levels(self, 
+                            entity_id: int = None,
+                            entity_name: str = None,
+                            levels: ISA95LevelEnum = None):
+        """
+        Aggiunge livelli ISA95 a un'entità (mantiene i livelli esistenti).
+        
+        Args:
+            entity_id: ID dell'entity (opzionale)
+            entity_name: Nome dell'entity (opzionale)
+            levels: Lista di livelli da aggiungere
+        
+        Returns:
+            Entity: L'entity modificata
+        
+        Raises:
+            ValueError: Se entity non trovata o parametri invalidi
+        
+        Example:
+            add_entity_isa_levels(entity_name="sensor", levels=[ISA95LevelEnum.LEVEL_2])
+        """
+        # Validazione
+        if entity_id is None and entity_name is None:
+            raise ValueError("Devi fornire 'entity_id' o 'entity_name'")
+        
+        if not levels:
+            raise ValueError("Devi fornire almeno un livello")
+        
+        # Normalizza a lista
+        if not isinstance(levels, list):
+            levels = [levels]
+        
+        # Trova l'entity
+        if entity_id is not None:
+            entity = self.session.query(Entity).filter_by(id=entity_id).first()
+        else:
+            entity = self.session.query(Entity).filter_by(name=entity_name).first()
+        
+        if not entity:
+            identifier = entity_id if entity_id else entity_name
+            raise ValueError(f"Entity '{identifier}' non trovata nel database")
+        
+        # Aggiungi livelli
+        added_count = 0
+        skipped = []
+        
+        for level_obj in levels:
+            level = self.session.query(ISA95Level).filter_by(name=level_obj.value).first()
+            if not level:
+                self.session.rollback()
+                raise ValueError(f"Livello ISA95 '{level_obj.value}' non trovato")
+            
+            # Controlla se il link già esiste
+            existing = self.session.query(EntityISA95Link).filter_by(
+                entity_id=entity.id,
+                isa95_id=level.id
+            ).first()
+            
+            if not existing:
+                link = EntityISA95Link(entity_id=entity.id, isa95_id=level.id)
+                self.session.add(link)
+                added_count += 1
+            else:
+                skipped.append(level_obj.value)
+        
+        self.session.commit()
+        
+        # Messaggi
+        if added_count > 0:
+            print(f"{added_count} livello/i aggiunto/i per entity '{entity.name}'")
+        if skipped:
+            print(f"Livelli già associati (skip): {', '.join(skipped)}")
+        
+        # Mostra livelli correnti
+        current_levels = [link.isa95_level.name for link in entity.isa95_links]
+        print(f"Livelli correnti: {', '.join(current_levels)}")
+        
+        return entity
+
+    def remove_entity_isa_levels(self, 
+                                entity_id: int = None,
+                                entity_name: str = None,
+                                levels: ISA95LevelEnum = None):
+        """
+        Rimuove livelli ISA95 da un'entità.
+        
+        Args:
+            entity_id: ID dell'entity (opzionale)
+            entity_name: Nome dell'entity (opzionale)
+            levels: Lista di livelli da rimuovere
+        
+        Returns:
+            Entity: L'entity modificata
+        
+        Raises:
+            ValueError: Se entity non trovata o parametri invalidi
+        
+        Example:
+            remove_entity_isa_levels(entity_id=42, levels=[ISA95LevelEnum.LEVEL_0, ISA95LevelEnum.DEFAULT])
+        """
+        # Validazione
+        if entity_id is None and entity_name is None:
+            raise ValueError("Devi fornire 'entity_id' o 'entity_name'")
+        
+        if not levels:
+            raise ValueError("Devi fornire almeno un livello")
+        
+        # Normalizza a lista
+        if not isinstance(levels, list):
+            levels = [levels]
+        
+        # Trova l'entity
+        if entity_id is not None:
+            entity = self.session.query(Entity).filter_by(id=entity_id).first()
+        else:
+            entity = self.session.query(Entity).filter_by(name=entity_name).first()
+        
+        if not entity:
+            identifier = entity_id if entity_id else entity_name
+            raise ValueError(f"Entity '{identifier}' non trovata nel database")
+        
+        # Rimuovi livelli
+        removed_count = 0
+        not_found = []
+        
+        for level_obj in levels:
+            level = self.session.query(ISA95Level).filter_by(name=level_obj.value).first()
+            if not level:
+                not_found.append(level_obj.value)
+                continue
+            
+            # Rimuovi il link
+            deleted = self.session.query(EntityISA95Link).filter_by(
+                entity_id=entity.id,
+                isa95_id=level.id
+            ).delete()
+            
+            removed_count += deleted
+        
+        self.session.commit()
+        
+        # Messaggi
+        if removed_count > 0:
+            print(f"{removed_count} livello/i rimosso/i per entity '{entity.name}'")
+        else:
+            print(f"Nessun livello rimosso (non erano associati)")
+        
+        if not_found:
+            print(f"Livelli non trovati nel DB: {', '.join(not_found)}")
+        
+        # Mostra livelli correnti
+        current_levels = [link.isa95_level.name for link in entity.isa95_links]
+        if current_levels:
+            print(f"Livelli correnti: {', '.join(current_levels)}")
+        else:
+            print(f"Entity '{entity.name}' non ha più livelli ISA95 associati")
+        
+        return entity
+   
     def remove_intents(self, 
                     intent_ids: list[int] = None,
                     intent_names: list[str] = None):
@@ -645,3 +1085,14 @@ controller = Controller(engine)
 # print([elem.id for elem in out])
 # out = controller.get_entities_by_isa95_level(ISA95LevelEnum.LEVEL_2)
 # print([elem.id for elem in out])
+
+# controller.add_intent_isa_levels(183, levels= ISA95LevelEnum.LEVEL_0)
+# controller.remove_intent_isa_levels(183, levels= ISA95LevelEnum.LEVEL_0)
+# controller.replace_intent_isa_levels(183, levels= [ISA95LevelEnum.LEVEL_0,ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
+
+
+# controller.add_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_0,ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
+# controller.replace_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_0])
+
+# controller.remove_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
+
