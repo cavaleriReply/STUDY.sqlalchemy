@@ -11,7 +11,19 @@ class RepositoryLayer():
     def __init__(self, engine):
         Session = sessionmaker(bind=engine)
         self.session = Session()
-            
+    
+    # populate the db with the default onfiguration of concepts
+    def populate_default_db_configuration(self):
+        '''
+        used to populate che db with the initial configuration.
+        the database must already exists
+        '''
+        default_configuration = self._get_default_configuration()
+
+        self._populate_isa95_levels()
+        self._populate_default_intents(default_configuration['intents'])
+        self._populate_default_entities(default_configuration['entities'])
+
     def _get_default_configuration(self):
         intents_path = r'C:\Users\f.cavaleri\Desktop\NLP_BREAKDOWN\IPCEI.NLPBreakdown\config\ontology\intents.json'
         entities_path = r'C:\Users\f.cavaleri\Desktop\NLP_BREAKDOWN\IPCEI.NLPBreakdown\config\ontology\entities.json'
@@ -27,16 +39,16 @@ class RepositoryLayer():
             data = json.load(f)
         return data
 
-    def populate_default_db_configuration(self):
-        '''
-        used to populate che db with the initial configuration.
-        the database must already exists
-        '''
-        default_configuration = self._get_default_configuration()
-
-        self._populate_isa95_levels()
-        self._populate_default_intents(default_configuration['intents'])
-        self._populate_default_entities(default_configuration['entities'])
+    def _populate_isa95_levels(self):
+        """Inserisce i livelli ISA95 standard"""
+        for level_name in [isa_class.value for isa_class in ISA95LevelEnum]:
+            # Controlla se già esiste
+            existing = self.session.query(ISA95Level).filter_by(name=level_name).first()
+            if not existing:
+                level = ISA95Level(name=level_name)
+                self.session.add(level)
+        
+        self.session.commit()
 
     def _populate_default_intents(self, intents_dict):
         '''
@@ -72,6 +84,7 @@ class RepositoryLayer():
         
         self.create_entities_with_levels(entities_list)
 
+    # intents and entities management
     def create_intents_with_levels(self,
                                    intent_list):
         '''
@@ -141,376 +154,7 @@ class RepositoryLayer():
                 self.session.add(link)
         
         self.session.commit()
-
-    def _populate_isa95_levels(self):
-        """Inserisce i livelli ISA95 standard"""
-        for level_name in [isa_class.value for isa_class in ISA95LevelEnum]:
-            # Controlla se già esiste
-            existing = self.session.query(ISA95Level).filter_by(name=level_name).first()
-            if not existing:
-                level = ISA95Level(name=level_name)
-                self.session.add(level)
-        
-        self.session.commit()
-
-    def define_intents_relation(self,
-                                id_intent_a,
-                                id_intent_b,
-                                relation_type : RelationType,
-                                confidence : float = 1.0):
-
-        """
-        Crea o aggiorna una relazione di matching tra due intenti.
-        
-        Args:
-            intent_a: Nome del primo intent
-            intent_b: Nome del secondo intent
-            relation_type: Tipo di relazione (RelationType enum)
-            confidence: Livello di confidenza [0.0-1.0]
-        
-        Raises:
-            ValueError: Se intent non trovato o parametri invalidi
-        
-        Example:
-            define_intents_relation("avvia_macchina", "start_machine", 
-                                RelationType.EQUIVALENT, 1.0)
-        """
-        # Validazione confidence
-        if not 0.0 <= confidence <= 1.0:
-            raise ValueError(f"Confidence must be between 0.0 e 1.0, got: {confidence}")
-        
-        # Trova gli intent
-        intent_a_obj = self.session.query(Intent).filter_by(id=id_intent_a).first()
-        intent_b_obj = self.session.query(Intent).filter_by(id=id_intent_b).first()
-        
-        # Validazione esistenza
-        if not intent_a_obj:
-            raise ValueError(f"Intent '{intent_a_obj.name}' non trovato nel database")
-        if not intent_b_obj:
-            raise ValueError(f"Intent '{intent_b_obj.name}' non trovato nel database")
-        
-        # Validazione self-reference
-        if intent_a_obj.id == intent_b_obj.id:
-            raise ValueError(f"Non è possibile creare una relazione di un intent con se stesso")
-        
-        # Controlla se la relazione già esiste (in entrambe le direzioni)
-        existing_match = self.session.query(IntentMatch).filter(
-            or_(
-                and_(IntentMatch.intent_a_id == id_intent_a, IntentMatch.intent_b_id == id_intent_b),
-                and_(IntentMatch.intent_a_id == id_intent_b, IntentMatch.intent_b_id == id_intent_a)
-            )
-        ).first()
-        
-        if existing_match:
-            inverted_match = self.session.query(IntentMatch).filter(
-                and_(IntentMatch.intent_a_id == id_intent_b, IntentMatch.intent_b_id == id_intent_a)
-            ).first()
-            if inverted_match:
-                existing_match.intent_a_id = id_intent_a
-                existing_match.intent_b_id = id_intent_b
-            existing_match.relation_type = relation_type
-            existing_match.confidence = confidence
-            self.session.commit()
-            print(f"Relation updated")
-            return existing_match
-
-        # Crea la nuova relazione
-        match = IntentMatch(
-            intent_a_id=intent_a_obj.id,
-            intent_b_id=intent_b_obj.id,
-            relation_type=relation_type,
-            confidence=confidence
-        )
-        
-        self.session.add(match)
-        self.session.commit()
-        
-        print(f"relation created: {intent_a_obj.name} → {intent_b_obj.name} ({relation_type.value}, conf: {confidence})")
-        return match
-
-    def define_entities_relation(self,
-                                id_entity_a,
-                                id_entity_b,
-                                relation_type : RelationType,
-                                confidence : float = 1.0):
-
-        """
-        Crea o aggiorna una relazione di matching tra due entità.
-        
-        Args:
-            id_entity_a: ID della prima entity
-            id_entity_b: ID della seconda entity
-            relation_type: Tipo di relazione (RelationType enum)
-            confidence: Livello di confidenza [0.0-1.0]
-        
-        Raises:
-            ValueError: Se entity non trovata o parametri invalidi
-        
-        Example:
-            define_entities_relation(10, 11, RelationType.EQUIVALENT, 1.0)
-        """
-        # Validazione confidence
-        if not 0.0 <= confidence <= 1.0:
-            raise ValueError(f"Confidence must be between 0.0 e 1.0, got: {confidence}")
-        
-        # Trova le entity
-        entity_a_obj = self.session.query(Entity).filter_by(id=id_entity_a).first()
-        entity_b_obj = self.session.query(Entity).filter_by(id=id_entity_b).first()
-        
-        # Validazione esistenza
-        if not entity_a_obj:
-            raise ValueError(f"Entity con ID {id_entity_a} not found")
-        if not entity_b_obj:
-            raise ValueError(f"Entity con ID {id_entity_b} not found")
-        
-        # Validazione self-reference
-        if entity_a_obj.id == entity_b_obj.id:
-            raise ValueError(f"Non è possibile creare una relazione di una entity con se stessa")
-        
-        # Controlla se la relazione già esiste (in entrambe le direzioni)
-        existing_match = self.session.query(EntityMatch).filter(
-            or_(
-                and_(EntityMatch.entity_a_id == id_entity_a, EntityMatch.entity_b_id == id_entity_b),
-                and_(EntityMatch.entity_a_id == id_entity_b, EntityMatch.entity_b_id == id_entity_a)
-            )
-        ).first()
-        
-        if existing_match:
-            # Normalizza sempre nella direzione richiesta
-            
-            inverted_match = self.session.query(IntentMatch).filter(
-                and_(EntityMatch.entity_a_id == id_entity_b, EntityMatch.entity_b_id == id_entity_a)
-            ).first()
-                
-            if inverted_match:
-                existing_match.entity_a_id = id_entity_a
-                existing_match.entity_b_id = id_entity_b
-
-            existing_match.relation_type = relation_type
-            existing_match.confidence = confidence
-            self.session.commit()
-            print(f"Relation updated: {entity_a_obj.name} ↔ {entity_b_obj.name}")
-            return existing_match
-        
-        # Crea la nuova relazione
-        match = EntityMatch(
-            entity_a_id=entity_a_obj.id,
-            entity_b_id=entity_b_obj.id,
-            relation_type=relation_type,
-            confidence=confidence
-        )
-        
-        self.session.add(match)
-        self.session.commit()
-        
-        print(f"Relation created: {entity_a_obj.name} → {entity_b_obj.name} ({relation_type.value}, conf: {confidence})")
-        return match
-
-    def remove_intents_relation(self,  
-                           id_intent_a: int = None,
-                           id_intent_b: int = None,
-                           match_id: int = None):
-        """
-        Rimuove relazioni tra intenti in base a diversi criteri.
-        Args:
-            id_intent_a: ID del primo intent (opzionale)
-            id_intent_b: ID del secondo intent (opzionale)
-            match_id: ID specifico della relazione (opzionale)
-        
-        Returns:
-            int: Numero di relazioni rimosse
-        
-        Examples:
-            # Rimuovi relazione specifica tra due intent
-            remove_intents_relation(id_intent_a=180, id_intent_b=181)
-            
-            # Rimuovi relazione per ID
-            remove_intents_relation(match_id=42)
-            
-            # Rimuovi tutte le relazioni BROADER tra due intent specifici
-            remove_intents_relation(id_intent_a=180, id_intent_b=181, relation_type=RelationType.BROADER)
-        """
-        query = self.session.query(IntentMatch)
-        # Validazione: almeno un parametro deve essere fornito
-        if match_id is None and (id_intent_a is None or id_intent_b is None):
-            raise ValueError("Devi fornire o 'match_id' oppure sia 'id_intent_a' che 'id_intent_b'")
-    
-        # Caso 1: Rimuovi per match_id specifico
-        if match_id is not None:
-            query = query.filter(IntentMatch.id == match_id)
-        
-        # Caso 2: Rimuovi per coppia di intent (bidirezionale)
-        else: #  id_intent_a is not None and id_intent_b is not None:
-            query = query.filter(
-                and_(IntentMatch.intent_a_id == id_intent_a, IntentMatch.intent_b_id == id_intent_b)
-            )
-        
-        # Esegui la query
-        matches = query.all()
-        count = len(matches)
-        
-        if count == 0:
-            print("Nessuna relazione trovata con i criteri specificati")
-            return 0
-        
-        # Elimina tutte le relazioni trovate
-        for match in matches:
-            self.session.delete(match)
-        
-        self.session.commit()
-        
-        print(f"{count} relazione/i rimossa/e")
-        return count
-
-    def remove_entities_relation(self,
-                                 id_entity_a: int=None,
-                                 id_entity_b: int=None,
-                                 match_id:int = None):
-        '''
-        removes entity relations ...
-        '''
-        query = self.session.query(EntityMatch)
-        # Validazione: almeno un parametro deve essere fornito
-        if match_id is None and (id_entity_a is None or id_entity_b is None):
-            raise ValueError("Devi fornire o 'match_id' oppure sia 'id_entity_a' che 'id_entity_b'")
-    
-        # Caso 1: Rimuovi per match_id specifico
-        if match_id is not None:
-            query = query.filter(EntityMatch.id == match_id)
-        else:
-            query = query.filter(
-                # devi rimuovere esattamente la combinazione [id_entity_a, id_entity_b]
-                # non il contrario, la direzione è importante
-                and_(EntityMatch.entity_a_id == id_entity_a, EntityMatch.entity_b_id == id_entity_b)
-            )
-
-        # Esegui la query
-        matches = query.all()
-        count = len(matches)
-        
-        if count == 0:
-            print("Nessuna relazione trovata con i criteri specificati")
-            return 0
-        
-        # Elimina tutte le relazioni trovate
-        for match in matches:
-            self.session.delete(match)
-        
-        self.session.commit()
-        
-        print(f"{count} relazione/i rimossa/e")
-        return count
-
-    # modificare descrizione
-    def modify_intent_description(self, 
-                                intent_id: int = None,
-                                intent_name: str = None,
-                                new_description: str = None):
-        """
-        Modifica la descrizione di un intento.
-        
-        Args:
-            intent_id: ID dell'intent (opzionale)
-            intent_name: Nome dell'intent (opzionale)
-            new_description: Nuova descrizione
-        
-        Returns:
-            Intent: L'intent modificato
-        
-        Raises:
-            ValueError: Se intent non trovato o parametri invalidi
-        
-        Examples:
-            # Per ID
-            modify_intent_description(intent_id=180, new_description="Avvia una macchina CNC")
-            
-            # Per nome
-            modify_intent_description(intent_name="start_machine", new_description="Start production machine")
-        """
-        # Validazione
-        if intent_id is None and intent_name is None:
-            raise ValueError("Devi fornire 'intent_id' o 'intent_name'")
-        
-        if new_description is None:
-            raise ValueError("Devi fornire 'new_description'")
-        
-        # Trova l'intent
-        if intent_id is not None:
-            intent = self.session.query(Intent).filter_by(id=intent_id).first()
-        else:
-            intent = self.session.query(Intent).filter_by(name=intent_name).first()
-        
-        if not intent:
-            identifier = intent_id if intent_id else intent_name
-            raise ValueError(f"Intent '{identifier}' non trovato nel database")
-        
-        # Salva la vecchia descrizione per il log
-        old_description = intent.description
-        
-        # Modifica la descrizione
-        intent.description = new_description
-        
-        self.session.commit()
-        
-        print(f"Descrizione modificata per intent '{intent.name}'")
-        
-        return intent
-
-    def modify_entity_description(self, 
-                                entity_id: int = None,
-                                entity_name: str = None,
-                                new_description: str = None):
-        """
-        Modifica la descrizione di un'entità.
-        
-        Args:
-            entity_id: ID dell'entity (opzionale)
-            entity_name: Nome dell'entity (opzionale)
-            new_description: Nuova descrizione
-        
-        Returns:
-            Entity: L'entity modificata
-        
-        Raises:
-            ValueError: Se entity non trovata o parametri invalidi
-        
-        Examples:
-            # Per ID
-            modify_entity_description(entity_id=42, new_description="Sensore di temperatura industriale")
-            
-            # Per nome
-            modify_entity_description(entity_name="sensor", new_description="Industrial temperature sensor")
-        """
-        # Validazione
-        if entity_id is None and entity_name is None:
-            raise ValueError("Devi fornire 'entity_id' o 'entity_name'")
-        
-        if new_description is None:
-            raise ValueError("Devi fornire 'new_description'")
-        
-        # Trova l'entity
-        if entity_id is not None:
-            entity = self.session.query(Entity).filter_by(id=entity_id).first()
-        else:
-            entity = self.session.query(Entity).filter_by(name=entity_name).first()
-        
-        if not entity:
-            identifier = entity_id if entity_id else entity_name
-            raise ValueError(f"Entity '{identifier}' non trovata nel database")
-        
-        # Salva la vecchia descrizione per il log
-        old_description = entity.description
-        
-        # Modifica la descrizione
-        entity.description = new_description
-        
-        self.session.commit()
-        
-        print(f"Descrizione modificata per entity '{entity.name}'")
-        
-        return entity
-
-    # modificare livello isa
+  
     def replace_intent_isa_levels(self, 
                                 intent_id: int = None,
                                 intent_name: str = None,
@@ -1078,6 +722,363 @@ class RepositoryLayer():
         print(f"{count} entities eliminati")
         return count
 
+    def modify_intent_description(self, 
+                                intent_id: int = None,
+                                intent_name: str = None,
+                                new_description: str = None):
+        """
+        Modifica la descrizione di un intento.
+        
+        Args:
+            intent_id: ID dell'intent (opzionale)
+            intent_name: Nome dell'intent (opzionale)
+            new_description: Nuova descrizione
+        
+        Returns:
+            Intent: L'intent modificato
+        
+        Raises:
+            ValueError: Se intent non trovato o parametri invalidi
+        
+        Examples:
+            # Per ID
+            modify_intent_description(intent_id=180, new_description="Avvia una macchina CNC")
+            
+            # Per nome
+            modify_intent_description(intent_name="start_machine", new_description="Start production machine")
+        """
+        # Validazione
+        if intent_id is None and intent_name is None:
+            raise ValueError("Devi fornire 'intent_id' o 'intent_name'")
+        
+        if new_description is None:
+            raise ValueError("Devi fornire 'new_description'")
+        
+        # Trova l'intent
+        if intent_id is not None:
+            intent = self.session.query(Intent).filter_by(id=intent_id).first()
+        else:
+            intent = self.session.query(Intent).filter_by(name=intent_name).first()
+        
+        if not intent:
+            identifier = intent_id if intent_id else intent_name
+            raise ValueError(f"Intent '{identifier}' non trovato nel database")
+        
+        # Salva la vecchia descrizione per il log
+        old_description = intent.description
+        
+        # Modifica la descrizione
+        intent.description = new_description
+        
+        self.session.commit()
+        
+        print(f"Descrizione modificata per intent '{intent.name}'")
+        
+        return intent
+
+    def modify_entity_description(self, 
+                                entity_id: int = None,
+                                entity_name: str = None,
+                                new_description: str = None):
+        """
+        Modifica la descrizione di un'entità.
+        
+        Args:
+            entity_id: ID dell'entity (opzionale)
+            entity_name: Nome dell'entity (opzionale)
+            new_description: Nuova descrizione
+        
+        Returns:
+            Entity: L'entity modificata
+        
+        Raises:
+            ValueError: Se entity non trovata o parametri invalidi
+        
+        Examples:
+            # Per ID
+            modify_entity_description(entity_id=42, new_description="Sensore di temperatura industriale")
+            
+            # Per nome
+            modify_entity_description(entity_name="sensor", new_description="Industrial temperature sensor")
+        """
+        # Validazione
+        if entity_id is None and entity_name is None:
+            raise ValueError("Devi fornire 'entity_id' o 'entity_name'")
+        
+        if new_description is None:
+            raise ValueError("Devi fornire 'new_description'")
+        
+        # Trova l'entity
+        if entity_id is not None:
+            entity = self.session.query(Entity).filter_by(id=entity_id).first()
+        else:
+            entity = self.session.query(Entity).filter_by(name=entity_name).first()
+        
+        if not entity:
+            identifier = entity_id if entity_id else entity_name
+            raise ValueError(f"Entity '{identifier}' non trovata nel database")
+        
+        # Salva la vecchia descrizione per il log
+        old_description = entity.description
+        
+        # Modifica la descrizione
+        entity.description = new_description
+        
+        self.session.commit()
+        
+        print(f"Descrizione modificata per entity '{entity.name}'")
+        
+        return entity
+
+    # intent and entity relations management
+    def define_intents_relation(self,
+                                id_intent_a,
+                                id_intent_b,
+                                relation_type : RelationType,
+                                confidence : float = 1.0):
+
+        """
+        Crea o aggiorna una relazione di matching tra due intenti.
+        
+        Args:
+            intent_a: Nome del primo intent
+            intent_b: Nome del secondo intent
+            relation_type: Tipo di relazione (RelationType enum)
+            confidence: Livello di confidenza [0.0-1.0]
+        
+        Raises:
+            ValueError: Se intent non trovato o parametri invalidi
+        
+        Example:
+            define_intents_relation("avvia_macchina", "start_machine", 
+                                RelationType.EQUIVALENT, 1.0)
+        """
+        # Validazione confidence
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"Confidence must be between 0.0 e 1.0, got: {confidence}")
+        
+        # Trova gli intent
+        intent_a_obj = self.session.query(Intent).filter_by(id=id_intent_a).first()
+        intent_b_obj = self.session.query(Intent).filter_by(id=id_intent_b).first()
+        
+        # Validazione esistenza
+        if not intent_a_obj:
+            raise ValueError(f"Intent '{intent_a_obj.name}' non trovato nel database")
+        if not intent_b_obj:
+            raise ValueError(f"Intent '{intent_b_obj.name}' non trovato nel database")
+        
+        # Validazione self-reference
+        if intent_a_obj.id == intent_b_obj.id:
+            raise ValueError(f"Non è possibile creare una relazione di un intent con se stesso")
+        
+        # Controlla se la relazione già esiste (in entrambe le direzioni)
+        existing_match = self.session.query(IntentMatch).filter(
+            or_(
+                and_(IntentMatch.intent_a_id == id_intent_a, IntentMatch.intent_b_id == id_intent_b),
+                and_(IntentMatch.intent_a_id == id_intent_b, IntentMatch.intent_b_id == id_intent_a)
+            )
+        ).first()
+        
+        if existing_match:
+            inverted_match = self.session.query(IntentMatch).filter(
+                and_(IntentMatch.intent_a_id == id_intent_b, IntentMatch.intent_b_id == id_intent_a)
+            ).first()
+            if inverted_match:
+                existing_match.intent_a_id = id_intent_a
+                existing_match.intent_b_id = id_intent_b
+            existing_match.relation_type = relation_type
+            existing_match.confidence = confidence
+            self.session.commit()
+            print(f"Relation updated")
+            return existing_match
+
+        # Crea la nuova relazione
+        match = IntentMatch(
+            intent_a_id=intent_a_obj.id,
+            intent_b_id=intent_b_obj.id,
+            relation_type=relation_type,
+            confidence=confidence
+        )
+        
+        self.session.add(match)
+        self.session.commit()
+        
+        print(f"relation created: {intent_a_obj.name} → {intent_b_obj.name} ({relation_type.value}, conf: {confidence})")
+        return match
+
+    def define_entities_relation(self,
+                                id_entity_a,
+                                id_entity_b,
+                                relation_type : RelationType,
+                                confidence : float = 1.0):
+
+        """
+        Crea o aggiorna una relazione di matching tra due entità.
+        
+        Args:
+            id_entity_a: ID della prima entity
+            id_entity_b: ID della seconda entity
+            relation_type: Tipo di relazione (RelationType enum)
+            confidence: Livello di confidenza [0.0-1.0]
+        
+        Raises:
+            ValueError: Se entity non trovata o parametri invalidi
+        
+        Example:
+            define_entities_relation(10, 11, RelationType.EQUIVALENT, 1.0)
+        """
+        # Validazione confidence
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"Confidence must be between 0.0 e 1.0, got: {confidence}")
+        
+        # Trova le entity
+        entity_a_obj = self.session.query(Entity).filter_by(id=id_entity_a).first()
+        entity_b_obj = self.session.query(Entity).filter_by(id=id_entity_b).first()
+        
+        # Validazione esistenza
+        if not entity_a_obj:
+            raise ValueError(f"Entity con ID {id_entity_a} not found")
+        if not entity_b_obj:
+            raise ValueError(f"Entity con ID {id_entity_b} not found")
+        
+        # Validazione self-reference
+        if entity_a_obj.id == entity_b_obj.id:
+            raise ValueError(f"Non è possibile creare una relazione di una entity con se stessa")
+        
+        # Controlla se la relazione già esiste (in entrambe le direzioni)
+        existing_match = self.session.query(EntityMatch).filter(
+            or_(
+                and_(EntityMatch.entity_a_id == id_entity_a, EntityMatch.entity_b_id == id_entity_b),
+                and_(EntityMatch.entity_a_id == id_entity_b, EntityMatch.entity_b_id == id_entity_a)
+            )
+        ).first()
+        
+        if existing_match:
+            # Normalizza sempre nella direzione richiesta
+            
+            inverted_match = self.session.query(IntentMatch).filter(
+                and_(EntityMatch.entity_a_id == id_entity_b, EntityMatch.entity_b_id == id_entity_a)
+            ).first()
+                
+            if inverted_match:
+                existing_match.entity_a_id = id_entity_a
+                existing_match.entity_b_id = id_entity_b
+
+            existing_match.relation_type = relation_type
+            existing_match.confidence = confidence
+            self.session.commit()
+            print(f"Relation updated: {entity_a_obj.name} ↔ {entity_b_obj.name}")
+            return existing_match
+        
+        # Crea la nuova relazione
+        match = EntityMatch(
+            entity_a_id=entity_a_obj.id,
+            entity_b_id=entity_b_obj.id,
+            relation_type=relation_type,
+            confidence=confidence
+        )
+        
+        self.session.add(match)
+        self.session.commit()
+        
+        print(f"Relation created: {entity_a_obj.name} → {entity_b_obj.name} ({relation_type.value}, conf: {confidence})")
+        return match
+
+    def remove_intents_relation(self,  
+                           id_intent_a: int = None,
+                           id_intent_b: int = None,
+                           match_id: int = None):
+        """
+        Rimuove relazioni tra intenti in base a diversi criteri.
+        Args:
+            id_intent_a: ID del primo intent (opzionale)
+            id_intent_b: ID del secondo intent (opzionale)
+            match_id: ID specifico della relazione (opzionale)
+        
+        Returns:
+            int: Numero di relazioni rimosse
+        
+        Examples:
+            # Rimuovi relazione specifica tra due intent
+            remove_intents_relation(id_intent_a=180, id_intent_b=181)
+            
+            # Rimuovi relazione per ID
+            remove_intents_relation(match_id=42)
+            
+            # Rimuovi tutte le relazioni BROADER tra due intent specifici
+            remove_intents_relation(id_intent_a=180, id_intent_b=181, relation_type=RelationType.BROADER)
+        """
+        query = self.session.query(IntentMatch)
+        # Validazione: almeno un parametro deve essere fornito
+        if match_id is None and (id_intent_a is None or id_intent_b is None):
+            raise ValueError("Devi fornire o 'match_id' oppure sia 'id_intent_a' che 'id_intent_b'")
+    
+        # Caso 1: Rimuovi per match_id specifico
+        if match_id is not None:
+            query = query.filter(IntentMatch.id == match_id)
+        
+        # Caso 2: Rimuovi per coppia di intent (bidirezionale)
+        else: #  id_intent_a is not None and id_intent_b is not None:
+            query = query.filter(
+                and_(IntentMatch.intent_a_id == id_intent_a, IntentMatch.intent_b_id == id_intent_b)
+            )
+        
+        # Esegui la query
+        matches = query.all()
+        count = len(matches)
+        
+        if count == 0:
+            print("Nessuna relazione trovata con i criteri specificati")
+            return 0
+        
+        # Elimina tutte le relazioni trovate
+        for match in matches:
+            self.session.delete(match)
+        
+        self.session.commit()
+        
+        print(f"{count} relazione/i rimossa/e")
+        return count
+
+    def remove_entities_relation(self,
+                                 id_entity_a: int=None,
+                                 id_entity_b: int=None,
+                                 match_id:int = None):
+        '''
+        removes entity relations ...
+        '''
+        query = self.session.query(EntityMatch)
+        # Validazione: almeno un parametro deve essere fornito
+        if match_id is None and (id_entity_a is None or id_entity_b is None):
+            raise ValueError("Devi fornire o 'match_id' oppure sia 'id_entity_a' che 'id_entity_b'")
+    
+        # Caso 1: Rimuovi per match_id specifico
+        if match_id is not None:
+            query = query.filter(EntityMatch.id == match_id)
+        else:
+            query = query.filter(
+                # devi rimuovere esattamente la combinazione [id_entity_a, id_entity_b]
+                # non il contrario, la direzione è importante
+                and_(EntityMatch.entity_a_id == id_entity_a, EntityMatch.entity_b_id == id_entity_b)
+            )
+
+        # Esegui la query
+        matches = query.all()
+        count = len(matches)
+        
+        if count == 0:
+            print("Nessuna relazione trovata con i criteri specificati")
+            return 0
+        
+        # Elimina tutte le relazioni trovate
+        for match in matches:
+            self.session.delete(match)
+        
+        self.session.commit()
+        
+        print(f"{count} relazione/i rimossa/e")
+        return count
+
     def get_intents_by_isa95_level(self, level: ISA95LevelEnum):
         """
         Recupera tutti gli intenti associati a un livello ISA95 specifico.
@@ -1152,9 +1153,7 @@ import url
 
 # Crea il motore SQLAlchemy
 engine = create_engine(url.url, echo=True)
-
 Base.metadata.create_all(engine)
-
 
 repository_obj = RepositoryLayer(engine)
 # repository_obj.populate_default_db_configuration()
