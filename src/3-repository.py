@@ -7,7 +7,7 @@ import json
 from tables_definition import *
 
 # RepositoryLayer
-class Controller():
+class RepositoryLayer():
     def __init__(self, engine):
         Session = sessionmaker(bind=engine)
         self.session = Session()
@@ -144,9 +144,7 @@ class Controller():
 
     def _populate_isa95_levels(self):
         """Inserisce i livelli ISA95 standard"""
-        levels = ["DEFAULT", "PLC", "SCADA", "MES", "ERP"]
-        
-        for level_name in levels:
+        for level_name in [isa_class.value for isa_class in ISA95LevelEnum]:
             # Controlla se già esiste
             existing = self.session.query(ISA95Level).filter_by(name=level_name).first()
             if not existing:
@@ -404,16 +402,113 @@ class Controller():
         return count
 
     # modificare descrizione
+    def modify_intent_description(self, 
+                                intent_id: int = None,
+                                intent_name: str = None,
+                                new_description: str = None):
+        """
+        Modifica la descrizione di un intento.
+        
+        Args:
+            intent_id: ID dell'intent (opzionale)
+            intent_name: Nome dell'intent (opzionale)
+            new_description: Nuova descrizione
+        
+        Returns:
+            Intent: L'intent modificato
+        
+        Raises:
+            ValueError: Se intent non trovato o parametri invalidi
+        
+        Examples:
+            # Per ID
+            modify_intent_description(intent_id=180, new_description="Avvia una macchina CNC")
+            
+            # Per nome
+            modify_intent_description(intent_name="start_machine", new_description="Start production machine")
+        """
+        # Validazione
+        if intent_id is None and intent_name is None:
+            raise ValueError("Devi fornire 'intent_id' o 'intent_name'")
+        
+        if new_description is None:
+            raise ValueError("Devi fornire 'new_description'")
+        
+        # Trova l'intent
+        if intent_id is not None:
+            intent = self.session.query(Intent).filter_by(id=intent_id).first()
+        else:
+            intent = self.session.query(Intent).filter_by(name=intent_name).first()
+        
+        if not intent:
+            identifier = intent_id if intent_id else intent_name
+            raise ValueError(f"Intent '{identifier}' non trovato nel database")
+        
+        # Salva la vecchia descrizione per il log
+        old_description = intent.description
+        
+        # Modifica la descrizione
+        intent.description = new_description
+        
+        self.session.commit()
+        
+        print(f"Descrizione modificata per intent '{intent.name}'")
+        
+        return intent
 
-    def modify_intent_description(self):
-        """Mostra tutte le informazioni su un intent"""
-
-        pass
-
-    def modify_entity_description(self):
-        """Mostra tutte le informazioni su una entità"""
-    
-        pass
+    def modify_entity_description(self, 
+                                entity_id: int = None,
+                                entity_name: str = None,
+                                new_description: str = None):
+        """
+        Modifica la descrizione di un'entità.
+        
+        Args:
+            entity_id: ID dell'entity (opzionale)
+            entity_name: Nome dell'entity (opzionale)
+            new_description: Nuova descrizione
+        
+        Returns:
+            Entity: L'entity modificata
+        
+        Raises:
+            ValueError: Se entity non trovata o parametri invalidi
+        
+        Examples:
+            # Per ID
+            modify_entity_description(entity_id=42, new_description="Sensore di temperatura industriale")
+            
+            # Per nome
+            modify_entity_description(entity_name="sensor", new_description="Industrial temperature sensor")
+        """
+        # Validazione
+        if entity_id is None and entity_name is None:
+            raise ValueError("Devi fornire 'entity_id' o 'entity_name'")
+        
+        if new_description is None:
+            raise ValueError("Devi fornire 'new_description'")
+        
+        # Trova l'entity
+        if entity_id is not None:
+            entity = self.session.query(Entity).filter_by(id=entity_id).first()
+        else:
+            entity = self.session.query(Entity).filter_by(name=entity_name).first()
+        
+        if not entity:
+            identifier = entity_id if entity_id else entity_name
+            raise ValueError(f"Entity '{identifier}' non trovata nel database")
+        
+        # Salva la vecchia descrizione per il log
+        old_description = entity.description
+        
+        # Modifica la descrizione
+        entity.description = new_description
+        
+        self.session.commit()
+        
+        print(f"Descrizione modificata per entity '{entity.name}'")
+        
+        return entity
 
     # modificare livello isa
     def replace_intent_isa_levels(self, 
@@ -858,13 +953,6 @@ class Controller():
             print(f"Entity '{entity.name}' non ha più livelli ISA95 associati")
         
         return entity
-   
-
-    def modify_entity_isa_level(self, 
-                    entity_id: int = None,
-                    entity_name: str = None):
-        
-        pass
         
     def remove_intents(self, 
                     intent_ids: list[int] = None,
@@ -1068,39 +1156,44 @@ engine = create_engine(url.url, echo=True)
 Base.metadata.create_all(engine)
 
 
-controller = Controller(engine)
-# controller.populate_default_db_configuration()
-# controller.define_intents_relation(180, 181, RelationType.DEPRECATED)
-# controller.define_intents_relation(181, 182, RelationType.DEPRECATED)
-# controller.define_intents_relation(182, 183, RelationType.DEPRECATED)
-# controller.define_intents_relation(180, 181, RelationType.BROADER)
-# controller.define_entities_relation(74, 75, RelationType.EQUIVALENT)
-# controller.remove_intents_relation(match_id=8)
-# controller.remove_intents_relation(182, 183)
+repository_obj = RepositoryLayer(engine)
+# repository_obj.populate_default_db_configuration()
+# repository_obj.define_intents_relation(180, 181, RelationType.DEPRECATED)
+# repository_obj.define_intents_relation(181, 182, RelationType.DEPRECATED)
+# repository_obj.define_intents_relation(182, 183, RelationType.DEPRECATED)
+# repository_obj.define_intents_relation(180, 181, RelationType.BROADER)
+# repository_obj.define_entities_relation(74, 75, RelationType.EQUIVALENT)
+# repository_obj.remove_intents_relation(match_id=8)
+# repository_obj.remove_intents_relation(182, 183)
 #
-# controller.define_entities_relation(75, 90, RelationType.DEPRECATED)
-# controller.define_entities_relation(90, 77, RelationType.DEPRECATED)
-# controller.define_entities_relation(78, 79, RelationType.DEPRECATED)
-# controller.define_entities_relation(80, 82, RelationType.DEPRECATED)
-# controller.remove_entities_relation(match_id=4)
-# controller.define_intents_relation(181, 182, RelationType.EQUIVALENT)
-# controller.remove_intents(intent_ids=[181, 182])
-# controller.remove_entities(entity_ids=[75, 78])
-# controller.remove_entities(entity_names=['logical_entity', 'failure_mode'])
+# repository_obj.define_entities_relation(75, 90, RelationType.DEPRECATED)
+# repository_obj.define_entities_relation(90, 77, RelationType.DEPRECATED)
+# repository_obj.define_entities_relation(78, 79, RelationType.DEPRECATED)
+# repository_obj.define_entities_relation(80, 82, RelationType.DEPRECATED)
+# repository_obj.remove_entities_relation(match_id=4)
+# repository_obj.define_intents_relation(181, 182, RelationType.EQUIVALENT)
+# repository_obj.remove_intents(intent_ids=[181, 182])
+# repository_obj.remove_entities(entity_ids=[75, 78])
+# repository_obj.remove_entities(entity_names=['logical_entity', 'failure_mode'])
 
 
-# out = controller.get_intents_by_isa95_level(ISA95LevelEnum.LEVEL_2)
+# out = repository_obj.get_intents_by_isa95_level(ISA95LevelEnum.LEVEL_2)
 # print([elem.id for elem in out])
-# out = controller.get_entities_by_isa95_level(ISA95LevelEnum.LEVEL_2)
+# out = repository_obj.get_entities_by_isa95_level(ISA95LevelEnum.LEVEL_2)
 # print([elem.id for elem in out])
 
-# controller.add_intent_isa_levels(183, levels= ISA95LevelEnum.LEVEL_0)
-# controller.remove_intent_isa_levels(183, levels= ISA95LevelEnum.LEVEL_0)
-# controller.replace_intent_isa_levels(183, levels= [ISA95LevelEnum.LEVEL_0,ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
+# repository_obj.add_intent_isa_levels(183, levels= ISA95LevelEnum.LEVEL_0)
+# repository_obj.remove_intent_isa_levels(183, levels= ISA95LevelEnum.LEVEL_0)
+# repository_obj.replace_intent_isa_levels(183, levels= [ISA95LevelEnum.LEVEL_0,ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
 
 
-# controller.add_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_0,ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
-# controller.replace_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_0])
+# repository_obj.add_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_0,ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
+# repository_obj.replace_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_0])
 
-# controller.remove_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
+# repository_obj.remove_entity_isa_levels(77, levels=[ISA95LevelEnum.LEVEL_4,ISA95LevelEnum.LEVEL_3])
 
+# repository_obj.modify_intent_description(intent_id=183, new_description="andiamo a mangiare")
+# repository_obj.modify_intent_description(intent_name="check_production_status", new_description="le tagliatelle")
+
+# repository_obj.modify_entity_description(entity_id=77, new_description="andiamo a mangiare")
+# repository_obj.modify_entity_description(entity_name="measurement_value_scada", new_description="le tagliatelle")
