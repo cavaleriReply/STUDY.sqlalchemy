@@ -8,7 +8,7 @@ Base = declarative_base()
 # Enum per i livelli ISA95
 class ISA95LevelEnum(enum.Enum):
     DEFAULT = "DEFAULT"
-    LEVEL_0 = "PLC" # per ora consideriamo il livello 0 plc al posto di sensors
+    LEVEL_0 = "SENSORS" # per ora consideriamo il livello 0 plc al posto di sensors
     LEVEL_1 = "PLC"
     LEVEL_2 = "SCADA"
     LEVEL_3 = "MES"

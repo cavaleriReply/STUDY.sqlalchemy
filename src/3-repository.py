@@ -1156,6 +1156,7 @@ engine = create_engine(url.url, echo=True)
 Base.metadata.create_all(engine)
 
 repository_obj = RepositoryLayer(engine)
+repository_obj.populate_default_db_configuration()
 # repository_obj.populate_default_db_configuration()
 # repository_obj.define_intents_relation(180, 181, RelationType.DEPRECATED)
 # repository_obj.define_intents_relation(181, 182, RelationType.DEPRECATED)
